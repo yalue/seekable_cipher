@@ -39,29 +39,29 @@ type SeekableCipher struct {
 }
 
 // Implements the chunkCache interface. Create using newChunkCache. This
-// "basic" version doesn't actually cache anything.
+// "basic" version doesn't actually cache anything, apart from reusing a single
+// buffer in order to avoid allocating new memory for chunks every time.
 type basicChunkCache struct {
 	passphrase string
+	buffer []byte
 }
 
-// Returns chunkSize bytes, given a newly initialized Hash instance, primed
-// with the passphrase and offset.
-func generateChunk(h hash.Hash) []byte {
-	toReturn := make([]byte, chunkSize)
+// Fills the dst buffer (which must be chunkSize), given a Hash instance that
+// has already been primed with the passphrase and offset.
+func generateChunk(h hash.Hash, dst []byte) {
 	hashSize := uint64(h.Size())
 	currentHash := make([]byte, 0, hashSize)
 	bytesGenerated := uint64(0)
 
 	for bytesGenerated < chunkSize {
 		currentHash = h.Sum(currentHash)
-		copy(toReturn[bytesGenerated:bytesGenerated+hashSize], currentHash)
+		copy(dst[bytesGenerated:bytesGenerated+hashSize], currentHash)
 		h.Write(currentHash)
 		bytesGenerated += hashSize
 		// Note that Sum *appends* to the currentHash slice, so we'll just
 		// reuse it by slicing it to 0 length.
 		currentHash = currentHash[:0]
 	}
-	return toReturn
 }
 
 func (c *basicChunkCache) getChunk(offset int64) []byte {
@@ -74,8 +74,8 @@ func (c *basicChunkCache) getChunk(offset int64) []byte {
 	var offsetBytes [8]byte
 	binary.LittleEndian.PutUint64(offsetBytes[:], alignedOffset)
 	h.Write(offsetBytes[:])
-
-	return generateChunk(h)
+	generateChunk(h, c.buffer)
+	return c.buffer
 }
 
 // A wrapper returning a chunkCache that generates chunks with the given
@@ -83,6 +83,7 @@ func (c *basicChunkCache) getChunk(offset int64) []byte {
 func newChunkCache(passphrase string) chunkCache {
 	return &basicChunkCache{
 		passphrase: passphrase,
+		buffer: make([]byte, chunkSize),
 	}
 }
 
