@@ -39,11 +39,13 @@ type SeekableCipher struct {
 }
 
 // Implements the chunkCache interface. Create using newChunkCache. This
-// "basic" version doesn't actually cache anything, apart from reusing a single
-// buffer in order to avoid allocating new memory for chunks every time.
+// "basic" version only caches the first chunk (index 0), under the assumption
+// that a file's header is more important to cache. Additionally, it reuses
+// memory for the remaining chunks.
 type basicChunkCache struct {
 	passphrase string
-	buffer []byte
+	firstChunk []byte
+	buffer     []byte
 }
 
 // Fills the dst buffer (which must be chunkSize), given a Hash instance that
@@ -67,6 +69,9 @@ func generateChunk(h hash.Hash, dst []byte) {
 func (c *basicChunkCache) getChunk(offset int64) []byte {
 	h := sha512.New()
 	alignedOffset := uint64(offset) & chunkIndexMask
+	if alignedOffset == 0 {
+		return c.firstChunk
+	}
 
 	// "Seed" the data generation by initializing the hash using the passphrase
 	// and offset.
@@ -81,10 +86,18 @@ func (c *basicChunkCache) getChunk(offset int64) []byte {
 // A wrapper returning a chunkCache that generates chunks with the given
 // passphrase.
 func newChunkCache(passphrase string) chunkCache {
-	return &basicChunkCache{
+	toReturn := &basicChunkCache{
 		passphrase: passphrase,
-		buffer: make([]byte, chunkSize),
+		firstChunk: make([]byte, chunkSize),
+		buffer:     make([]byte, chunkSize),
 	}
+	// Pre-generate the first chunk, at offset 0.
+	h := sha512.New()
+	h.Write([]byte(passphrase))
+	var offsetBytes [8]byte
+	h.Write(offsetBytes[:])
+	generateChunk(h, toReturn.firstChunk)
+	return toReturn
 }
 
 // Returns a new SeekableCipher, initialized at offset 0, generating data using
