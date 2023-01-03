@@ -3,6 +3,7 @@ package seekable_cipher
 import (
 	"bytes"
 	"io"
+	"math/rand"
 	"testing"
 )
 
@@ -76,3 +77,80 @@ func TestSeekableCipher(t *testing.T) {
 		t.FailNow()
 	}
 }
+
+func randomBytes(size, seed int) []byte {
+	rng := rand.New(rand.NewSource(int64(seed)))
+	toReturn := make([]byte, size)
+	for i := range toReturn {
+		toReturn[i] = byte(rng.Int())
+	}
+	return toReturn
+}
+
+func TestXor(t *testing.T) {
+	x := randomBytes(1337, 7)
+	y := randomBytes(len(x), 8)
+	expectedResult := make([]byte, len(x))
+	for i := range x {
+		expectedResult[i] = x[i] ^ y[i]
+	}
+	dst := make([]byte, len(x))
+	SimpleXor(dst, x, y)
+	if !bytes.Equal(dst, expectedResult) {
+		t.Logf("SimpleXor produced incorrect results.\n")
+		t.FailNow()
+	}
+	FastXor(dst, dst, y)
+	if !bytes.Equal(dst, x) {
+		t.Logf("FastXor failed to restore original input.\n")
+		t.FailNow()
+	}
+}
+
+func BenchmarkFastXor(b *testing.B) {
+	size := 1024 * 1024
+	x := randomBytes(size, 1337)
+	y := randomBytes(size, 1338)
+	dst := make([]byte, size)
+	for n := 0; n < b.N; n++ {
+		FastXor(dst, x, y)
+	}
+}
+
+func BenchmarkSimpleXor(b *testing.B) {
+	size := 1024 * 1024
+	x := randomBytes(size, 1337)
+	y := randomBytes(size, 1338)
+	dst := make([]byte, size)
+	for n := 0; n < b.N; n++ {
+		SimpleXor(dst, x, y)
+	}
+}
+
+func TestDecryptReadSeeker(t *testing.T) {
+	key := "This is the password!"
+	originalData := []byte("Hi there!")
+	r := NewCipherReadSeeker(bytes.NewReader(originalData), key)
+	encrypted, e := io.ReadAll(r)
+	if e != nil {
+		t.Logf("Error reading full ciphertext: %s\n", e)
+		t.FailNow()
+	}
+	t.Logf("Original data: % x, encrypted: % x\n", originalData, encrypted)
+	if bytes.Equal(originalData, encrypted) {
+		t.Logf("Encryption didn't change the original data.\n")
+		t.FailNow()
+	}
+	r2 := NewCipherReadSeeker(bytes.NewReader(encrypted), key)
+	decrypted, e := io.ReadAll(r2)
+	if e != nil {
+		t.Logf("Error reading reconstructed text: %s\n", e)
+		t.FailNow()
+	}
+	if !bytes.Equal(originalData, decrypted) {
+		t.Logf("Failed reconstructing original text.\n")
+		t.FailNow()
+	}
+}
+
+// TODO (next): Write a test for SeekableWriteSeeker
