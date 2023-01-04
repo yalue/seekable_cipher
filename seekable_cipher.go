@@ -197,13 +197,10 @@ func (r *CipherReadSeeker) Seek(offset int64, whence int) (int64, error) {
 	if e != nil {
 		return newOffset, fmt.Errorf("Error seeking in underlying data: %w", e)
 	}
-	newOffset2, e := r.cipherStream.Seek(offset, whence)
+	// We'll always simply make the cipher's offset match the file's.
+	_, e = r.cipherStream.Seek(newOffset, io.SeekStart)
 	if e != nil {
 		return newOffset, fmt.Errorf("Error seeking in cipher stream: %w", e)
-	}
-	if newOffset != newOffset2 {
-		return 0, fmt.Errorf("Internal error: offset in cipher not equal to "+
-			"offset in encrypted data (%d vs %d)", newOffset2, newOffset)
 	}
 	return newOffset, nil
 }
@@ -265,20 +262,14 @@ func (w *CipherWriteSeeker) Seek(offset int64, whence int) (int64, error) {
 	if e != nil {
 		return newOffset, fmt.Errorf("Error seeking in underlying dst: %w", e)
 	}
-	newOffset2, e := w.cipherStream.Seek(offset, whence)
+	e = w.resetCipherOffset()
 	if e != nil {
-		return newOffset, fmt.Errorf("Error seeking in cipher stream: %w", e)
-	}
-	if newOffset != newOffset2 {
-		return 0, fmt.Errorf("Internal error: offset in cipher not equal to "+
-			"offset in encrypted data sink (%d vs %d)", newOffset2, newOffset)
+		return newOffset, fmt.Errorf("Unable to set cipher offset: %w", e)
 	}
 	return newOffset, nil
 }
 
-// In the case of a write failure, this attempts to reset the offset in the
-// cipher stream to match the offset in the output sink. Returns an error if
-// one occurs.
+// Used to make the offset in the seekable cipher match the offset in the file.
 func (w *CipherWriteSeeker) resetCipherOffset() error {
 	offset, e := w.dst.Seek(0, io.SeekCurrent)
 	if e != nil {
