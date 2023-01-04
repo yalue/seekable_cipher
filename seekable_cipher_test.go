@@ -2,6 +2,7 @@ package seekable_cipher
 
 import (
 	"bytes"
+	"github.com/yalue/byte_utils"
 	"io"
 	"testing"
 )
@@ -77,7 +78,7 @@ func TestSeekableCipher(t *testing.T) {
 	}
 }
 
-func TestDecryptReadSeeker(t *testing.T) {
+func TestCipherReadSeeker(t *testing.T) {
 	key := "This is the password!"
 	originalData := []byte("Hi there!")
 	r := NewCipherReadSeeker(bytes.NewReader(originalData), key)
@@ -103,4 +104,31 @@ func TestDecryptReadSeeker(t *testing.T) {
 	}
 }
 
-// TODO (next): Write a test for SeekableWriteSeeker
+func TestCipherWriteSeeker(t *testing.T) {
+	key := "This is the password! (but a bit different!)"
+	originalData := []byte("Hi there!")
+	dst := byte_utils.NewSeekableBuffer()
+	w := NewCipherWriteSeeker(dst, key)
+	bytesWritten, e := w.Write(originalData)
+	if e != nil {
+		t.Logf("Failed writing to seekable buffer: %s\n", e)
+		t.FailNow()
+	}
+	if bytesWritten != len(originalData) {
+		t.Logf("Wrote only %d/%d bytes of data\n", bytesWritten,
+			len(originalData))
+		t.FailNow()
+	}
+	t.Logf("Encrypted using writer % x -> % x\n", originalData, dst.Data)
+	reconstructed := byte_utils.NewSeekableBuffer()
+	otherWay := NewCipherWriteSeeker(reconstructed, key)
+	_, e = otherWay.Write(dst.Data)
+	if e != nil {
+		t.Logf("Failed writing to seekable buffer (reconstructing): %s\n", e)
+		t.FailNow()
+	}
+	if !bytes.Equal(reconstructed.Data, originalData) {
+		t.Logf("Failed reconstructing original data using CipherWriteSeeker\n")
+		t.FailNow()
+	}
+}
