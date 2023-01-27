@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"github.com/yalue/byte_utils"
 	"io"
+	"math/rand"
 	"testing"
 )
 
@@ -75,6 +76,59 @@ func TestSeekableCipher(t *testing.T) {
 		t.Logf("Didn't get same contents after seeking: % x vs % x\n",
 			bytesA[0:16], a)
 		t.FailNow()
+	}
+}
+
+func TestMultiSeeks(t *testing.T) {
+	rng := rand.New(rand.NewSource(1337))
+	count := 200
+	offsets := make([]int64, count)
+	sizes := make([]int64, count)
+	initialResults := make([][]byte, count)
+	// The sizes will be between 0 and 2 MB
+	maxSize := int64(2 * 1024 * 1024)
+	for i := range sizes {
+		sizes[i] = rng.Int63n(maxSize)
+	}
+	for i := range initialResults {
+		initialResults[i] = make([]byte, sizes[i])
+	}
+	c := NewSeekableCipher("password1")
+	var e error
+
+	// Perform the first readings.
+	for i := range offsets {
+		_, e = c.Seek(offsets[i], io.SeekStart)
+		if e != nil {
+			t.Logf("Failed seeking to offset %d: %s\n", offsets[i], e)
+			t.FailNow()
+		}
+		_, e = c.Read(initialResults[i])
+		if e != nil {
+			t.Logf("Failed reading at offset %d: %s\n", offsets[i], e)
+			t.FailNow()
+		}
+	}
+
+	// Verify that we get the same results on a second reading.
+	buffer := make([]byte, maxSize)
+	for i := range offsets {
+		_, e = c.Seek(offsets[i], io.SeekStart)
+		if e != nil {
+			t.Logf("Failed seeking to offset %d: %s\n", offsets[i], e)
+			t.FailNow()
+		}
+		_, e = c.Read(buffer[0:sizes[i]])
+		if e != nil {
+			t.Logf("Failed reading offset %d: %s\n", offsets[i], e)
+			t.FailNow()
+		}
+		if !bytes.Equal(buffer[0:sizes[i]], initialResults[i]) {
+			t.Logf("Bytes at offset %d didn't match the second time: "+
+				"% x vs % x\n", offsets[i], buffer[0:16],
+				initialResults[i][0:16])
+			t.FailNow()
+		}
 	}
 }
 
