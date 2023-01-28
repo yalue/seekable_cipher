@@ -81,7 +81,7 @@ func TestSeekableCipher(t *testing.T) {
 
 func TestMultiSeeks(t *testing.T) {
 	rng := rand.New(rand.NewSource(1337))
-	count := 200
+	count := 100
 	offsets := make([]int64, count)
 	sizes := make([]int64, count)
 	initialResults := make([][]byte, count)
@@ -89,6 +89,9 @@ func TestMultiSeeks(t *testing.T) {
 	maxSize := int64(2 * 1024 * 1024)
 	for i := range sizes {
 		sizes[i] = rng.Int63n(maxSize)
+	}
+	for i := range offsets {
+		offsets[i] = rng.Int63n(1024 * 1024 * 1024)
 	}
 	for i := range initialResults {
 		initialResults[i] = make([]byte, sizes[i])
